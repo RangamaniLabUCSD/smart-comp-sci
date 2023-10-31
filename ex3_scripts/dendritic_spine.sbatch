@@ -23,5 +23,6 @@ export RESULTSDIR=$SCRATCH_DIRECTORY
 
 echo "Run command: ${LIBRARY_ROOT}/venv/bin/python3 ${LIBRARY_ROOT}/ca2+-examples/dendritic_spine.py"
 # Assuming that you installed the software in a virutal environment in ${LIBRARY_ROOT}/venv
-RESULTSDIR=$SCRATCH_DIRECTORY EXAMPLEDIR=$EXAMPLEDIR ${LIBRARY_ROOT}/venv/bin/python3 ${LIBRARY_ROOT}/ca2+-examples/dendritic_spine.py
-cp slurm-output/${SLURM_JOBID}-* ${SCRATCH_DIRECTORY}
+RESULTSDIR=$SCRATCH_DIRECTORY EXAMPLEDIR=$EXAMPLEDIR HPC=1 ${LIBRARY_ROOT}/venv/bin/python3 ${LIBRARY_ROOT}/ca2+-examples/dendritic_spine.py
+# Move log file
+mv ${SLURM_JOBID}-* ${SCRATCH_DIRECTORY}
