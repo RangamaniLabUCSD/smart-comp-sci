@@ -1,0 +1,1 @@
+{"solver": {"final_t": 0.025, "use_snes": true, "snes_preassemble_linear_system": false, "initial_dt": 0.0002, "adjust_dt": null, "time_precision": 8, "attempt_timestep_restart_on_divergence": false, "reset_timestep_for_negative_solution": false}, "reaction_database": {"prescribed": "k", "prescribed_linear": "k*u"}}
