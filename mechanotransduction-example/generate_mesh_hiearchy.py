@@ -83,7 +83,7 @@ with d.HDF5File(mesh.mpi_comm(), str((mesh_folder / "spreadCell_mesh_0.h5").abso
 for i in range(args.num_ref):
     mesh = d.adapt(mesh)
     cf = d.adapt(cf, mesh)
-    ff = d.adapt(cf, mesh)
+    ff = d.adapt(ff, mesh)
     with d.HDF5File(mesh.mpi_comm(), str((mesh_folder / f"spreadCell_mesh_{i}.h5").absolute()), "w") as hdf5:
         hdf5.write(mesh, "/mesh")
         hdf5.write(cf, "/mf2")
