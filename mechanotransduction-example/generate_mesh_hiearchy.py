@@ -15,11 +15,8 @@ def convert_from_h5(in_path: Path | str, out_path: Path | str):
     with d.HDF5File(d.MPI.comm_world, str(in_path), "r") as hdf5, d.XDMFFile(d.MPI.comm_world, str(out_path)) as xdmf:
         hdf5.read(mesh, "/mesh", False)
         cf = d.MeshFunction("size_t", mesh, mesh.topology().dim(), value=0)
-        print(mesh.topology().dim(), mesh.topology().dim()-1)
         ff = d.MeshFunction("size_t", mesh, mesh.topology().dim()-1, value=0)
         hdf5.read(cf, "/mf2")
-        from IPython import embed
-        embed()
         hdf5.read(ff, "/mf1")
 
         xdmf.write(mesh)
@@ -79,14 +76,17 @@ with d.HDF5File(mesh.mpi_comm(), str((mesh_folder / "spreadCell_mesh_0.h5").abso
     hdf5.read(cf, "/mf2")
     hdf5.read(ff, "/mf1")
 
+    convert_from_h5(
+        mesh_folder / f"spreadCell_mesh_{i}.h5", f"spreadCell_mesh_{0}.xdmf")
+
 
 for i in range(args.num_ref):
     mesh = d.adapt(mesh)
     cf = d.adapt(cf, mesh)
     ff = d.adapt(ff, mesh)
-    with d.HDF5File(mesh.mpi_comm(), str((mesh_folder / f"spreadCell_mesh_{i}.h5").absolute()), "w") as hdf5:
+    with d.HDF5File(mesh.mpi_comm(), str((mesh_folder / f"spreadCell_mesh_{i+1}.h5").absolute()), "w") as hdf5:
         hdf5.write(mesh, "/mesh")
         hdf5.write(cf, "/mf2")
         hdf5.write(ff, "/mf1")
     convert_from_h5(
-        mesh_folder / f"spreadCell_mesh_{i}.h5", f"spreadCell_mesh_{i}.xdmf")
+        mesh_folder / f"spreadCell_mesh_{i+1}.h5", f"spreadCell_mesh_{i+1}.xdmf")
