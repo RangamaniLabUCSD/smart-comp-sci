@@ -1,6 +1,5 @@
 from pathlib import Path
 import smart
-from IPython import embed
 import argparse
 import dolfin as d
 d.parameters["refinement_algorithm"] = "plaza_with_parent_facets"
@@ -9,19 +8,22 @@ d.parameters["refinement_algorithm"] = "plaza_with_parent_facets"
 def convert_from_h5(in_path: Path | str, out_path: Path | str):
     in_path = Path(in_path).absolute()
     out_path = Path(out_path).absolute()
+    assert out_path.parent != in_path.parent
     assert in_path.suffix == ".h5"
     assert out_path.suffix == ".xdmf"
     mesh = d.Mesh(d.MPI.comm_world)
-    with d.HDF5File(d.MPI.comm_world, str(in_path), "r") as hdf5, d.XDMFFile(d.MPI.comm_world, str(out_path)) as xdmf:
+    with d.HDF5File(d.MPI.comm_world, str(in_path), "r") as hdf5:
         hdf5.read(mesh, "/mesh", False)
         cf = d.MeshFunction("size_t", mesh, mesh.topology().dim(), value=0)
         ff = d.MeshFunction("size_t", mesh, mesh.topology().dim()-1, value=0)
         hdf5.read(cf, "/mf2")
         hdf5.read(ff, "/mf1")
 
+    with d.XDMFFile(d.MPI.comm_world, str(out_path)) as xdmf:
         xdmf.write(mesh)
         xdmf.write(cf)
-        xdmf.write(ff)
+        # ff.rename("facet_marker", "")
+        # xdmf.write(ff)
 
 
 outerExpr = "(1 - z**4/(1000+z**4)) * (r**2 + z**2) + 0.4*(r**2 + (z+15)**2)*z**4 / (10 + z**4) - 225"
@@ -76,8 +78,8 @@ with d.HDF5File(mesh.mpi_comm(), str((mesh_folder / "spreadCell_mesh_0.h5").abso
     hdf5.read(cf, "/mf2")
     hdf5.read(ff, "/mf1")
 
-    convert_from_h5(
-        mesh_folder / f"spreadCell_mesh_{i}.h5", f"spreadCell_mesh_{0}.xdmf")
+convert_from_h5(
+    mesh_folder / f"spreadCell_mesh_0.h5", f"spreadCell_mesh_0.xdmf")
 
 
 for i in range(args.num_ref):
