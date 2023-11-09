@@ -5,7 +5,8 @@ import dolfin as d
 from smart import mesh_tools
 
 
-mesh_file = Path.cwd().parent / "meshes" / "2spine_PM10_PSD11_ERM12_cyto1_ER2.xml"
+mesh_file = Path.cwd().parent / "meshes" / "1spine_PM10_PSD11_ERM12_cyto1_ER2.xml"
+# mesh_file = Path.cwd().parent / "meshes" / "2spine_PM10_PSD11_ERM12_cyto1_ER2.xml"
 print(f"Load mesh {mesh_file}")
 spine_mesh = d.Mesh(mesh_file.as_posix())
 cell_markers = d.MeshFunction("size_t", spine_mesh, 3, spine_mesh.domains())
