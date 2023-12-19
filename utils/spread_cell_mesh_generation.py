@@ -26,13 +26,34 @@ def create_3dcell(
     return_curvature: bool = False,
     nanopillars: Tuple[float, float, float] = "",
     thetaExpr: str = "",
+    use_tmp: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
-    Creates an axisymmetric mesh, with the bounding curve defined in
-    terms of r and z. (e.g. unit circle defined by "r**2 + (z-1)**2 == 1")
+    Creates a 3d cell mesh.
+    The inner contour (e.g. nucleus or other organelle) is defined
+    implicitly through innerExpr, which is rotated about the z axis
+    to form an axisymmetric shape (e.g. unit sphere centered at (0, 2) 
+    defined by innerExpr = "r**2 + (z-2)**2 - 1")
+    The outer cell contour is defined in terms of 
+    cylindrical coordinates r, z, and theta.
+    It is assumed that r can be expressed as a function of z and theta.
+    If r = r1(z)T(theta), r1 is defined implicitly by outerExpr or innerExpr 
+    (e.g. circle with radius 5 defined by outerExpr = "r**2 + z**2 - 25")
+    and T is defined by thetaExpr (for an axisymmetric geometry, thetaExpr = "1")
     It is assumed that substrate is present at z = 0, so if the curve extends
     below z = 0 , there is a sharp cutoff.
-    Can include one compartment inside another compartment
+    
+    Some relevant examples that include theta dependence:
+    * thetaExpr = "T0 + T1*cos(5*theta)", where T0 and T1 are user-defined numbers, 
+        describes a five-pointed star geometry
+    * thetaExpr = "a*b/sqrt((b*cos(theta))**2 + (a*sin(theta))**2)", where a and b
+        are user-defined numbers, describes an ellipse contact region
+    
+    Special cases:
+    * thetaExpr = "rectAR", where AR is a number representing an aspect ratio,
+        defines a rectangular geometry at the cell contact region.
+    * thetaExpr not given or thetaExpr = "" -> define axisymmetric 3d geometry by
+        rotating the gmsh object
 
     Args:
         outerExpr: String implicitly defining an r-z curve for the outer surface
@@ -46,9 +67,13 @@ def create_3dcell(
         outer_vol_tag: The value to mark the outer ellipsoidal volume with
         comm: MPI communicator to create the mesh with
         verbose: If true print gmsh output, else skip
+        return_curvature: If true, return curvatures as a vertex mesh function
         nanopillars: tuple with nanopillar radius, height, spacing
+        thetaExpr: String defining the theta dependence of the outer shape
     Returns:
         Tuple (mesh, facet_marker, cell_marker)
+    Or, if return_curvature = True, Returns:
+        Tuple (mesh, facet_marker, cell_marker, curvature_marker)
     """
     import gmsh
 
@@ -56,6 +81,7 @@ def create_3dcell(
         ValueError("Outer surface is not defined")
 
     rValsOuter, zValsOuter = implicit_curve(outerExpr)
+    zMax = max(zValsOuter)
 
     if not innerExpr == "":
         rValsInner, zValsInner = implicit_curve(innerExpr)
@@ -100,12 +126,33 @@ def create_3dcell(
                                        2*np.pi-theta_crit-theta_incr/4, 2*num_per_eighth)
             theta_range5 = np.linspace(2*np.pi-theta_crit+theta_incr/4, 
                                        2*np.pi, num_per_eighth)
-            thetaVec = np.concatenate([theta_range1, theta_range2, theta_range3, theta_range4, theta_range5])
+            thetaVec = np.concatenate([theta_range1, theta_range2, theta_range3, 
+                                       theta_range4, theta_range5])
             thetaVec[-1] = 0.0 # for exactness, replace 2*pi with 0.0
+            scaleVec = []
+            for j in range(len(thetaVec)):
+                if np.abs(np.tan(thetaVec[j])) <= b_rect / a_rect:
+                    scaleVec.append(np.abs(a_rect / (2*np.cos(thetaVec[j]))))
+                else:
+                    scaleVec.append(np.abs(b_rect / (2*np.sin(thetaVec[j]))))
         else:
             thetaVec = np.linspace(0.0, 2*np.pi, num_theta)
             thetaVec[-1] = 0.0 # for exactness, replace 2*pi with 0.0
             thetaExprSym = parse_expr(thetaExpr)
+            scaleVec = []
+            for j in range(len(thetaVec)):
+                scaleVec.append(float(thetaExprSym.subs({"theta": thetaVec[j]})))
+        # define a smooth shape (ellipsoid) to average out sharp edges
+        xVals = np.multiply(np.array(scaleVec), np.cos(np.array(thetaVec)))
+        yVals = np.multiply(np.array(scaleVec), np.sin(np.array(thetaVec)))
+        AR = (np.max(xVals) - np.min(xVals)) / (np.max(yVals) - np.min(yVals))
+        a = np.sqrt(AR)
+        b = 1/np.sqrt(AR)
+        thetaExprSmooth = f"{a}*{b}/sqrt(({b}*cos(theta))**2 + ({a}*sin(theta))**2)"
+        thetaExprSmooth = parse_expr(thetaExprSmooth)
+        scaleVecSmooth = []
+        for j in range(len(thetaVec)):
+            scaleVecSmooth.append(float(thetaExprSmooth.subs({"theta": thetaVec[j]})))
     else:
         thetaVec = [0]
     cell_plane_tag = []
@@ -113,82 +160,50 @@ def create_3dcell(
     outer_spline_list = []
     edge_surf_list = []
     edge_segments = []
-    outer_shape = []
     top_point = gmsh.model.occ.add_point(0.0, 0.0, zValsOuter[0])
     all_points_list = [top_point]
     if thetaExpr != "":
+        # define theta dependence
         for j in range(len(thetaVec)):
             if j == (len(thetaVec)-1):
                 outer_spline_list.append(outer_spline_list[0])
                 bottom_point_list.append(bottom_point_list[0])
             else:
-                if "rect" in thetaExpr:
-                    if np.abs(np.tan(thetaVec[j])) <= b_rect / a_rect:
-                        curScale = np.abs(a_rect / (2*np.cos(thetaVec[j])))
-                    else:
-                        curScale = np.abs(b_rect / (2*np.sin(thetaVec[j])))
-                else:
-                    curScale = thetaExprSym.subs({"theta": thetaVec[j]})
-                    curScale = float(curScale)
                 outer_tag_list = []
                 for i in range(len(rValsOuter)):
                     if i == 0:
                         outer_tag_list.append(top_point)
                     else:
+                        # average out sharp edges (cell becomes more and more ellipsoidal
+                        # away from the substrate)
+                        xValRef = rValsOuter[i]*scaleVec[j]*np.cos(thetaVec[j])
+                        yValRef = rValsOuter[i]*scaleVec[j]*np.sin(thetaVec[j])
+                        xValSmooth = rValsOuter[i]*scaleVecSmooth[j]*np.cos(thetaVec[j])
+                        yValSmooth =rValsOuter[i]*scaleVecSmooth[j]*np.sin(thetaVec[j])
+                        zScale1 = (zMax - zValsOuter[i])/zMax
+                        zScale2 = zValsOuter[i]/zMax
                         cur_tag = gmsh.model.occ.add_point(
-                            rValsOuter[i]*curScale*np.cos(thetaVec[j]), 
-                            rValsOuter[i]*curScale*np.sin(thetaVec[j]), 
+                            zScale1*xValRef + zScale2*xValSmooth, 
+                            zScale1*yValRef + zScale2*yValSmooth, 
                             zValsOuter[i])
                         outer_tag_list.append(cur_tag)
                         all_points_list.append(cur_tag)
                 outer_spline_list.append(gmsh.model.occ.add_spline(outer_tag_list))
                 bottom_point_list.append(outer_tag_list[-1])
-            if np.isclose(zValsOuter[-1], 0):  # then include substrate at z=0
-                # origin_tag = gmsh.model.occ.add_point(0, 0, 0)
-                # symm_axis_tag = gmsh.model.occ.add_line(origin_tag, outer_tag_list[0])
-                # if j > 0:
-                #     bottom_tag_prev = bottom_tag
-                # bottom_tag = gmsh.model.occ.add_line(origin_tag, outer_tag_list[-1])
-                # outer_loop_tag = gmsh.model.occ.add_curve_loop(
-                #     [outer_spline_tag, symm_axis_tag, bottom_tag]
-                # )
-                if j > 0:
-                    edge_tag = gmsh.model.occ.add_line(bottom_point_list[j-1], bottom_point_list[j])
-                    edge_loop_tag = gmsh.model.occ.add_curve_loop(
-                        [outer_spline_list[j], outer_spline_list[j-1], edge_tag])
-                    edge_surf_list.append(gmsh.model.occ.add_bspline_filling(edge_loop_tag, type="Curved"))
-                    edge_segments.append(edge_tag)
-            else:
-                symm_axis_tag = gmsh.model.occ.add_line(outer_tag_list[0], outer_tag_list[-1])
-                outer_loop_tag = gmsh.model.occ.add_curve_loop([outer_spline_list[j], symm_axis_tag])
-        # half_bottom_len = np.floor(len(bottom_point_list)/2)
-        # bottom_spline1 = gmsh.model.occ.add_spline(bottom_point_list[0:int(half_bottom_len+1)])
-        # bottom_spline2 = gmsh.model.occ.add_spline(bottom_point_list[int(half_bottom_len):])
+            if j > 0:
+                edge_tag = gmsh.model.occ.add_line(bottom_point_list[j-1], bottom_point_list[j])
+                edge_loop_tag = gmsh.model.occ.add_curve_loop(
+                    [outer_spline_list[j], outer_spline_list[j-1], edge_tag])
+                edge_surf_list.append(gmsh.model.occ.add_bspline_filling(edge_loop_tag, type="Curved"))
+                edge_segments.append(edge_tag)
+        # now define total outer shape from edge_segments and edge_surf_list    
         bottom_loop = gmsh.model.occ.add_curve_loop(edge_segments)
         bottom_surf = gmsh.model.occ.add_plane_surface([bottom_loop])
-        # cell_surf = gmsh.model.occ.add_bezier_surface(all_points_list, len(rValsOuter))
-        # cell_outer_surf = gmsh.model.occ.fuse([edge_surf_list[0]], edge_surf_list[1:])
         cur_surf_loop = gmsh.model.occ.add_surface_loop([bottom_surf, *edge_surf_list])
         outer_shape = gmsh.model.occ.add_volume([cur_surf_loop])
-        outer_shape = [[(3, outer_shape)]]
-
-        # prevScale = float(thetaExprSym.subs({"theta": thetaVec[j-1]}))
-        # pt1 = gmsh.model.occ.add_point(
-        #     rValsOuter[-1]*prevScale*np.cos(thetaVec[j-1]), 
-        #     rValsOuter[-1]*prevScale*np.sin(thetaVec[j-1]), 0.0)
-        # pt2 = gmsh.model.occ.add_point(
-        #     rValsOuter[-1]*curScale*np.cos(thetaVec[j]), 
-        #     rValsOuter[-1]*curScale*np.sin(thetaVec[j]), 0.0)
-        # edge_tag = gmsh.model.occ.add_line(pt1, pt2)
-        # edge_loop_tag = gmsh.model.occ.add_curve_loop(
-        #     [outer_spline_tag, outer_spline_tag_prev, edge_tag])
-        # edge_surf_tag = gmsh.model.occ.add_surface_filling(edge_loop_tag)
-        # bottom_loop = gmsh.model.occ.add_curve_loop([bottom_tag, bottom_tag_prev, edge_tag])
-        # bottom_plane = gmsh.model.occ.add_plane_surface([bottom_loop])
-        # cur_surf_loop = gmsh.model.occ.add_surface_loop(
-        #     [edge_surf_tag, cell_plane_tag[j], cell_plane_tag[j-1], bottom_plane])
-        # outer_shape.append(gmsh.model.occ.add_volume([cur_surf_loop]))
+        outer_shape = [(3, outer_shape)]
     else:
+        # rotate shape 2*pi in the case of no theta dependence
         outer_tag_list = []
         for i in range(len(rValsOuter)):
             if i == 0:
@@ -204,17 +219,8 @@ def create_3dcell(
             [outer_spline, symm_axis_tag, bottom_tag]
         )
         cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
-        outer_shape.append(gmsh.model.occ.revolve(
-            [(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi))
+        outer_shape = gmsh.model.occ.revolve([(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi)
     
-    # if len(outer_shape) > 1:
-    #     outer_shape_fused = [[(3, outer_shape[0])]]
-    #     for i in [1]:#range(1, len(outer_shape)):
-    #         # outer_shape_list.append((3, outer_shape[i]))
-    #         outer_shape_fused = gmsh.model.occ.fuse(outer_shape_fused[0], [(3, outer_shape[i])])
-    #     # outer_shape = gmsh.model.occ.fuse([outer_shape_list[0]], outer_shape_list[1:])
-    #     outer_shape = outer_shape_fused
-    outer_shape = outer_shape[0]
     if nanopillars != "":
         nanopillar_rad = nanopillars[0]
         nanopillar_height = nanopillars[1]
@@ -246,6 +252,7 @@ def create_3dcell(
             outer_shape_tags.append(outer_shape[i][1])
     assert len(outer_shape_tags) == 1  # should be just one 3D body from the full revolution
 
+    # need to fix labeling of facets!
     if innerExpr == "":
         # No inner shape in this case
         gmsh.model.occ.synchronize()
@@ -350,7 +357,10 @@ def create_3dcell(
 
     gmsh.model.mesh.generate(3)
     rank = MPI.COMM_WORLD.rank
-    tmp_folder = pathlib.Path(f"tmp_3dcell_{rank}")
+    if use_tmp:
+        tmp_folder = pathlib.Path(f"/root/tmp/tmp_3dcell_{rank}")
+    else:
+        tmp_folder = pathlib.Path(f"tmp_3dcell_{rank}")
     tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "3dcell.msh"
     gmsh.write(str(gmsh_file))
@@ -389,6 +399,7 @@ def create_2Dcell(
     half_cell: bool = True,
     return_curvature: bool = False,
     axisymm: bool = True,
+    use_tmp: bool = False,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 2D mesh of a cell profile, with the bounding curve defined in
@@ -413,6 +424,7 @@ def create_2Dcell(
         comm: MPI communicator to create the mesh with
         verbose: If true print gmsh output, else skip
         half_cell: If true, consider r=0 the symmetry axis for an axisymm shape
+        use_tmp: argument to use tmp directory for gmsh file creation
     Returns:
         Tuple (mesh, facet_marker, cell_marker)
     """
@@ -616,7 +628,10 @@ def create_2Dcell(
 
     gmsh.model.mesh.generate(2)
     rank = MPI.COMM_WORLD.rank
-    tmp_folder = pathlib.Path(f"tmp_2DCell_{rank}")
+    if use_tmp:
+        tmp_folder = pathlib.Path(f"/root/tmp/tmp_2DCell_{rank}")
+    else:
+        tmp_folder = pathlib.Path(f"tmp_2DCell_{rank}")
     tmp_folder.mkdir(exist_ok=True)
     gmsh_file = tmp_folder / "2DCell.msh"
     gmsh.write(str(gmsh_file))
