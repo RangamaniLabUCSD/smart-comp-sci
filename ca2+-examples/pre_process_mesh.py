@@ -5,7 +5,7 @@ import dolfin as d
 from smart import mesh_tools
 import ca2_parser_args
 
-def main(input_mesh_file, output_mesh_file):
+def main(input_mesh_file, output_mesh_file, num_refinements):
     if not Path(input_mesh_file).is_file():
         raise FileNotFoundError(f"File {input_mesh_file} does not exists")
     
@@ -13,6 +13,26 @@ def main(input_mesh_file, output_mesh_file):
     spine_mesh = d.Mesh(Path(input_mesh_file).as_posix())
     cell_markers = d.MeshFunction("size_t", spine_mesh, 3, spine_mesh.domains())
     facet_markers = d.MeshFunction("size_t", spine_mesh, 2, spine_mesh.domains())
+
+
+
+    if args["num_refinements"] > 0:
+        print(
+            f"Original mesh has {spine_mesh.num_cells()} cells, "
+            f"{spine_mesh.num_facets()} facets and "
+            f"{spine_mesh.num_vertices()} vertices"
+        )
+        d.parameters["refinement_algorithm"] = "plaza_with_parent_facets"
+        for _ in range(args["num_refinements"]):
+            spine_mesh = d.adapt(spine_mesh)
+            cell_markers = d.adapt(cell_markers, spine_mesh)
+            facet_markers = d.adapt(facet_markers, spine_mesh)
+        print(
+            f"Refined mesh has {spine_mesh.num_cells()} cells, "
+            f"{spine_mesh.num_facets()} facets and "
+            f"{spine_mesh.num_vertices()} vertices"
+        )
+
 
     # for i in range(len(facet_array)):
     #     if (

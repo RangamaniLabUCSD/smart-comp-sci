@@ -52,13 +52,19 @@ def add_argument_preprocess_spine_mesh(parser: argparse.ArgumentParser):
 
 
 def run_preprocess_spine_mesh(
-    input_mesh_file: Path, output_mesh_file: Path, dry_run: bool, **kwargs
+    input_mesh_file: Path,
+    output_mesh_file: Path,
+    dry_run: bool,
+    num_refinements: int,
+    **kwargs,
 ):
     args = [
         "--input-mesh-file",
         Path(input_mesh_file).as_posix(),
         "--output-mesh-file",
         Path(output_mesh_file).as_posix(),
+        "--num-refinements",
+        num_refinements,
     ]
     script = (
         (here / ".." / "ca2+-examples" / "pre_process_mesh.py")
@@ -77,7 +83,6 @@ def run_preprocess_spine_mesh(
 def run_dendritic_spine_example(
     mesh_file: Path,
     outdir: Path,
-    num_refinements: int,
     time_step: float,
     dry_run: bool = False,
     submit_ex3: bool = False,
@@ -86,8 +91,6 @@ def run_dendritic_spine_example(
     args = [
         "--mesh-file",
         Path(mesh_file).as_posix(),
-        "--num-refinements",
-        num_refinements,
         "--time-step",
         time_step,
     ]

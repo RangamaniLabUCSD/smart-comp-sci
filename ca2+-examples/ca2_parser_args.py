@@ -14,12 +14,6 @@ def add_run_dendritic_spine_arguments(parser: argparse.ArgumentParser) -> None:
         default=Path("results_2spines")
     )
     parser.add_argument(
-        "-n",
-        "--num-refinements",
-        type=int,
-        default=0,
-    )
-    parser.add_argument(
         "-dt",
         "--time-step",
         type=float,
@@ -37,4 +31,10 @@ def add_preprocess_mesh_arguments(parser: argparse.ArgumentParser) -> None:
         "--output-mesh-file",
         type=Path,
         default=Path("ellipseSpine_mesh.h5")
+    )
+    parser.add_argument(
+        "-n",
+        "--num-refinements",
+        type=int,
+        default=0,
     )
