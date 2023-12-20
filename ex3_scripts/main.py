@@ -2,9 +2,6 @@ import sys
 from textwrap import dedent
 from pathlib import Path
 import argparse
-import shlex
-import tempfile
-import time
 import subprocess as sp
 
 ex3_template = dedent(
@@ -105,7 +102,7 @@ def run_dendritic_spine_example(
     )
     # Turn all arguments into strings
     args = list(map(str, args))
-    args_str = shlex.join(args)
+    args_str = " ".join(args)
     if dry_run:
         print(f"Run command: {sys.executable} {script} {args_str}")
         return
