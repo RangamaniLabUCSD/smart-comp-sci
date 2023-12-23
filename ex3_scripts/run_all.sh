@@ -11,3 +11,5 @@ python3 main.py --submit-ex3 dendritic-spine --mesh-file meshes/ellipse1Spine_me
 python3 main.py --submit-ex3 dendritic-spine --mesh-file meshes/ellipse1Spine_mesh_0.h5 --time-step 0.0001
 python3 main.py --submit-ex3 dendritic-spine --mesh-file meshes/ellipse1Spine_mesh_0.h5 --time-step 0.00005
 python3 main.py --submit-ex3 dendritic-spine --mesh-file meshes/ellipse1Spine_mesh_0.h5 --time-step 0.00001
+# Test mass conservation
+python3 main.py --submit-ex3 dendritic-spine --mesh-file meshes/ellipse1Spine_mesh_0.h5  --time-step 0.0002 --enforce-mass-conservation

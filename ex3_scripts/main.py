@@ -63,6 +63,7 @@ def run_preprocess_spine_mesh(
         "--num-refinements",
         num_refinements,
     ]
+
     script = (
         (here / ".." / "ca2+-examples" / "pre_process_mesh.py")
         .absolute()
@@ -81,6 +82,7 @@ def run_dendritic_spine_example(
     mesh_file: Path,
     outdir: Path,
     time_step: float,
+    enforce_mass_conservation: bool,
     dry_run: bool = False,
     submit_ex3: bool = False,
     **kwargs,
@@ -91,6 +93,9 @@ def run_dendritic_spine_example(
         "--time-step",
         time_step,
     ]
+    if enforce_mass_conservation:
+        args.append("--enforce-mass-conservation")
+
     if not submit_ex3:
         args.extend(["--outdir", Path(outdir).as_posix()])
 
