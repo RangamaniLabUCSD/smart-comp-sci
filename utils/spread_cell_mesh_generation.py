@@ -226,14 +226,24 @@ def create_3dcell(
         nanopillar_height = nanopillars[1]
         nanopillar_spacing = nanopillars[2]
         zero_idx = np.nonzero(zValsOuter <= 0.0)
+        zero_idx = zero_idx[0][0]
         num_pillars = 2*np.floor(rValsOuter[zero_idx]/nanopillar_spacing) + 1
         rMax = nanopillar_spacing * np.floor(rValsOuter[zero_idx]/nanopillar_spacing)
-        test_coords = np.linspace(-rMax[0], rMax[0], int(num_pillars[0]))
+        test_coords = np.linspace(-rMax, rMax, int(num_pillars))
         xTest, yTest = np.meshgrid(test_coords, test_coords)
         rTest = np.sqrt(xTest**2 + yTest**2)
-        keep_logic = rTest <= rValsOuter[zero_idx]-nanopillar_rad-0.1
+        keep_logic = rTest <= 8#rValsOuter[zero_idx]-nanopillar_rad-0.1
         xTest, yTest = xTest[keep_logic], yTest[keep_logic]
+        if not all(np.diff(rValsOuter) > 0):
+            end_interp_idx = np.nonzero(np.diff(rValsOuter) < 0)
+            end_interp_idx = end_interp_idx[0][0]
+        else:
+            end_interp_idx = zero_idx
         for i in range(len(xTest)):
+            rTestCur = np.sqrt(xTest[i]**2 + yTest[i]**2)
+            zTestCur = np.interp(rTestCur, rValsOuter[0:end_interp_idx+1], zValsOuter[0:end_interp_idx+1])
+            if zTestCur < nanopillar_height + 0.1:
+                continue
             cyl_tag = gmsh.model.occ.add_cylinder(
                 xTest[i], yTest[i], 0.0, 0, 0, nanopillar_height-nanopillar_rad, nanopillar_rad)
             cap_tag = gmsh.model.occ.add_sphere(
@@ -667,11 +677,10 @@ def create_2Dcell(
             )
             kappa_mf = compute_curvature(
                 dmesh, mf2, mf3, facet_list, cell_list, half_mesh_data=(dmesh_half, mf2_half),
-                axisymm=axisymm,
             )
             (dmesh, mf2, mf3) = (dmesh_half, mf2_half, mf3_half)
         else:
-            kappa_mf = compute_curvature(dmesh, mf2, mf3, facet_list, cell_list, axisymm=axisymm)
+            kappa_mf = compute_curvature(dmesh, mf2, mf3, facet_list, cell_list)
         return (dmesh, mf2, mf3, kappa_mf)
     else:
         return (dmesh, mf2, mf3)
