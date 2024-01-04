@@ -5,11 +5,9 @@ Functions to create meshes for mechanotransduction example
 from typing import Tuple
 import pathlib
 import numpy as np
-import sympy as sym
 import dolfin as d
 from mpi4py import MPI
 from sympy.parsing.sympy_parser import parse_expr
-from sympy.solvers.solveset import solveset_real
 from smart.mesh_tools import implicit_curve, compute_curvature, gmsh_to_dolfin
 
 def create_3dcell(
