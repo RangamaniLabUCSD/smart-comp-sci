@@ -47,17 +47,105 @@ def add_argument_preprocess_spine_mesh(parser: argparse.ArgumentParser):
 
     ca2_parser_args.add_preprocess_spine_mesh_arguments(parser)
 
+
 def add_argument_mechanotransduction_example(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "mechanotransduction-example").as_posix())
     import mech_parser_args
 
     mech_parser_args.add_mechanotransduction_arguments(parser)
 
+
 def add_argument_preprocess_mech_mesh(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "mechanotransduction-example").as_posix())
     import mech_parser_args
 
     mech_parser_args.add_preprocess_mech_mesh_arguments(parser)
+
+
+def run_pre_preprocess_mech_mesh(
+    mesh_folder: Path,
+    shape: str,
+    hEdge: float,
+    hInnerEdge: float,
+    dry_run: bool,
+    **kwargs,
+):
+    args = [
+        "--mesh-folder",
+        Path(mesh_folder).as_posix(),
+        "--shape",
+        shape,
+        "--hEdge",
+        hEdge,
+        "--hInnerEdge",
+        hInnerEdge,
+    ]
+
+    script = (
+        (here / ".." / "mechanotransduction-example" / "pre_process_mesh.py")
+        .absolute()
+        .resolve()
+        .as_posix()
+    )
+    args = list(map(str, args))
+    print(f"Run command: {sys.executable} {script} {' '.join(args)}")
+    if dry_run:
+        return
+    sp.run([sys.executable, script, *args])
+
+
+def run_mechanotransduction_example(
+    mesh_folder: Path,
+    outdir: Path,
+    time_step: float,
+    e_val: float,
+    z_cutoff: float,
+    axisymmetric: bool,
+    dry_run: bool = False,
+    submit_ex3: bool = False,
+    **kwargs,
+):
+    args = [
+        "--mesh-folder",
+        Path(mesh_folder).as_posix(),
+        "--outdir",
+        Path(outdir).as_posix(),
+        "--time-step",
+        time_step,
+        "--e-val",
+        e_val,
+        "--z-cutoff",
+        z_cutoff,
+        "--axisymmetric" if axisymmetric else "",
+    ]
+
+    script = (
+        (here / ".." / "mechanotransduction-example" / "mechanotransduction.py")
+        .absolute()
+        .resolve()
+        .as_posix()
+    )
+    args = list(map(str, args))
+    args_str = " ".join(args)
+    if dry_run:
+        print(f"Run command: {sys.executable} {script} {args_str}")
+        return
+
+    if submit_ex3:
+        job_file = Path("tmp_job.sbatch")
+        job_file.write_text(
+            ex3_template.format(
+                job_name="mechanotransduction",
+                python=sys.executable,
+                script=script,
+                args=args_str,
+            )
+        )
+
+        sp.run(["sbatch", job_file])
+        job_file.unlink()
+    else:
+        sp.run([sys.executable, script, *args])
 
 
 def run_preprocess_spine_mesh(
@@ -214,6 +302,14 @@ def main():
     elif args["command"] == "dendritic-spine":
         print("Run dendritic spine example")
         run_dendritic_spine_example(**args)
+
+    elif args["command"] == "preprocess-mech-mesh":
+        print("Run preprocess mechanotransduction mesh")
+        run_pre_preprocess_mech_mesh(**args)
+
+    elif args["command"] == "mechanotransduction":
+        print("Run mechanotransduction example")
+        run_mechanotransduction_example(**args)
 
 
 if __name__ == "__main__":
