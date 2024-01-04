@@ -25,7 +25,7 @@ def add_run_dendritic_spine_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def add_preprocess_mesh_arguments(parser: argparse.ArgumentParser) -> None:
+def add_preprocess_spine_mesh_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--input-mesh-file",
         type=Path,

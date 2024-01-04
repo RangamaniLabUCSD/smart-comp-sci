@@ -14,16 +14,14 @@ def main(input_mesh_file, output_mesh_file, num_refinements):
     cell_markers = d.MeshFunction("size_t", spine_mesh, 3, spine_mesh.domains())
     facet_markers = d.MeshFunction("size_t", spine_mesh, 2, spine_mesh.domains())
 
-
-
-    if args["num_refinements"] > 0:
+    if num_refinements > 0:
         print(
             f"Original mesh has {spine_mesh.num_cells()} cells, "
             f"{spine_mesh.num_facets()} facets and "
             f"{spine_mesh.num_vertices()} vertices"
         )
         d.parameters["refinement_algorithm"] = "plaza_with_parent_facets"
-        for _ in range(args["num_refinements"]):
+        for _ in range(num_refinements):
             spine_mesh = d.adapt(spine_mesh)
             cell_markers = d.adapt(cell_markers, spine_mesh)
             facet_markers = d.adapt(facet_markers, spine_mesh)
@@ -46,6 +44,6 @@ def main(input_mesh_file, output_mesh_file, num_refinements):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    ca2_parser_args.add_preprocess_mesh_arguments(parser)
+    ca2_parser_args.add_preprocess_spine_mesh_arguments(parser)
     args = vars(parser.parse_args())
     raise SystemExit(main(**args))

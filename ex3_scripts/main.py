@@ -45,7 +45,19 @@ def add_argument_preprocess_spine_mesh(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "ca2+-examples").as_posix())
     import ca2_parser_args
 
-    ca2_parser_args.add_preprocess_mesh_arguments(parser)
+    ca2_parser_args.add_preprocess_spine_mesh_arguments(parser)
+
+def add_argument_mechanotransduction_example(parser: argparse.ArgumentParser):
+    sys.path.insert(0, (here / ".." / "mechanotransduction-example").as_posix())
+    import mech_parser_args
+
+    mech_parser_args.add_mechanotransduction_arguments(parser)
+
+def add_argument_preprocess_mech_mesh(parser: argparse.ArgumentParser):
+    sys.path.insert(0, (here / ".." / "mechanotransduction-example").as_posix())
+    import mech_parser_args
+
+    mech_parser_args.add_preprocess_mech_mesh_arguments(parser)
 
 
 def run_preprocess_spine_mesh(
@@ -166,6 +178,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("convert-notebooks", help="Convert notebooks to python files")
 
+    # Dendritic spine
     preprocess_spine_mesh = subparsers.add_parser(
         "preprocess-spine-mesh", help="Preprocess mesh for dendritic spine example"
     )
@@ -175,6 +188,17 @@ def main():
         "dendritic-spine", help="Run dendritic spine example"
     )
     add_argument_dendritic_spine_example(dendritic_spine)
+
+    # Mechanotransduction example
+    preprocess_spine_mesh = subparsers.add_parser(
+        "preprocess-mech-mesh", help="Preprocess mesh for mechanotransduction example"
+    )
+    add_argument_preprocess_mech_mesh(preprocess_spine_mesh)
+
+    dendritic_spine = subparsers.add_parser(
+        "mechanotransduction", help="Run mechanotransduction example"
+    )
+    add_argument_mechanotransduction_example(dendritic_spine)
 
     args = vars(parser.parse_args())
     # if args[""]
