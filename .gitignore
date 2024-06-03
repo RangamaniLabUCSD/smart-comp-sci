@@ -1,5 +1,6 @@
 _build
 meshes/
+analysis_data/
 *.sbatch
 
 # Byte-compiled / optimized / DLL files
