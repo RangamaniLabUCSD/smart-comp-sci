@@ -34,6 +34,10 @@ def add_run_mito_arguments(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=15.0
     )
+    parser.add_argument(
+        "--single-compartment-im",
+        action="store_true",
+    )
 
 
 def add_preprocess_mito_mesh_arguments(parser: argparse.ArgumentParser) -> None:

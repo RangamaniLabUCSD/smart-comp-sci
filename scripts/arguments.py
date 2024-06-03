@@ -7,28 +7,35 @@ here = Path(__file__).parent.absolute()
 
 
 def dendritic_spine_example(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "ca2+-examples").as_posix())
+    sys.path.insert(0, (here / ".." / "dendritic-spine-example").as_posix())
     import dendritic_spine_args
 
     dendritic_spine_args.add_run_dendritic_spine_arguments(parser)
 
 
 def preprocess_spine_mesh(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "ca2+-examples").as_posix())
+    sys.path.insert(0, (here / ".." / "dendritic-spine-example").as_posix())
     import dendritic_spine_args
 
     dendritic_spine_args.add_preprocess_spine_mesh_arguments(parser)
 
 
+def postprocess_spine_mesh(parser: argparse.ArgumentParser):
+    sys.path.insert(0, (here / ".." / "dendritic-spine-example").as_posix())
+    import dendritic_spine_args
+
+    dendritic_spine_args.add_dendritic_spine_postprocess_arguments(parser)
+
+
 def cru_example(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "ca2+-examples").as_posix())
+    sys.path.insert(0, (here / ".." / "cru-example").as_posix())
     import cru_args
 
     cru_args.add_run_cru_arguments(parser)
 
 
 def preprocess_cru_mesh(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "ca2+-examples").as_posix())
+    sys.path.insert(0, (here / ".." / "cru-example").as_posix())
     import cru_args
 
     cru_args.add_preprocess_cru_mesh_arguments(parser)
@@ -91,33 +98,41 @@ def postprocess_phosphorylation(parser: argparse.ArgumentParser):
 
 
 def setup_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # Root parser
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Just print the command and do not run it",
-    )
-    parser.add_argument(
-        "--submit-ex3",
-        action="store_true",
-        help="Add this flag if you want to submit the job on the ex3 cluster",
-    )
     parser.add_argument(
         "-n",
         "--ntasks",
         default=1,
         type=int,
-        help="Number of cores to use when submitting to the cluster",
+        help="Number of cores to use for each program",
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Just print the command and do not run it",
+    )
+
+
+    cg = parser.add_argument_group("cluster", "Options relevant for clusters")
+    cg.add_argument(
         "-p",
         "--partition",
         default="defq",
         type=str,
         help="Which partition to use on the cluster",
     )
-
+    cluster = cg.add_mutually_exclusive_group()
+    cluster.add_argument(
+        "--submit-ex3",
+        action="store_true",
+        help="Add this flag if you want to submit the job on the ex3 cluster",
+    )
+    cluster.add_argument(
+        "--submit-tscc",
+        action="store_true",
+        help="Add this flag if you want to submit the job on the hopper cluster at TSCC",
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -134,6 +149,11 @@ def setup_parser() -> argparse.ArgumentParser:
         "dendritic-spine", help="Run dendritic spine example"
     )
     dendritic_spine_example(dendritic_spine_parser)
+
+    postprocess_spine_mesh_parser = subparsers.add_parser(
+        "dendritic-spine-postprocess", help="postprocess mesh for dendritic spine example"
+    )
+    postprocess_spine_mesh(postprocess_spine_mesh_parser)
 
     # CRU (calcium release unit)
     preprocess_cru_mesh_parser = subparsers.add_parser(

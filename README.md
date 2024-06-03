@@ -1,8 +1,49 @@
 # smart-comp-sci
+
 Examples and numerical tests for SMART scientific computing paper.
 
 To run the code in this repository, it is necessary to install [SMART (Spatial Modeling Algorithms for Reaction and Transport)](https://github.com/RangamaniLabUCSD/smart.git).
 See more info about running the code and reproducing the results in the [scripts](scripts) folder.
+
+## Installation
+
+To run the scripts, we advice usage of docker, and the following base image
+`ghcr.io/scientificcomputing/fenics-gmsh:2024-02-19`, which after installation of docker, can be started with
+
+```bash
+docker run -ti -v $(pwd):/root/shared -w /root/shared -p 8888:8888 --name smart-comp-sci ghcr.io/scientificcomputing/fenics-gmsh:2024-05-13@sha256:e067aeefedc074230a4155e1aa0b0d0c8e3049ee982e43e580fefc2f39fe8175
+```
+
+This should preferably be started from the root of this git repo, as `-v` shared the current directory on your computer with the docker container.
+
+> [!NOTE]
+> This uses a Docker image build for AMD (not ARM), which means that users of ARM processors. We are aiming to fix this.
+
+This will launch a terminal with [FEniCS](https://bitbucket.org/fenics-project/dolfin/src/master/) installed.
+To install the compatible version of SMART, call
+
+```bash
+python3 -m pip install git+https://github.com/RangamaniLabUCSD/smart.git@development
+```
+
+If the current repository is in your root, call
+
+```bash
+python3 -m pip install -e .[lab] -U
+```
+
+To run notebooks in your browser, call
+
+```bash
+jupyter lab --ip 0.0.0.0 --no-browser --allow-root
+```
+
+All meshes can be downloaded from the [``SMART Demo Meshes" Zenodo dataset](https://zenodo.org/records/10480304).
+To run any of the Jupyter notebook versions of the examples, these meshes should be present in the main folder of the local repository.
+Alternatively, the paths can be provided when running in Python scripts as described in the README in the `scripts` folder.
+
+The output from all analyses are freely available from the [``SMART Analysis data'' Zenodo dataset](https://zenodo.org/doi/10.5281/zenodo.11252054).
+These results can be downloaded to locally regenerate any of the main plots.
 
 Shield: [![CC BY-SA 4.0][cc-by-sa-shield]][cc-by-sa]
 

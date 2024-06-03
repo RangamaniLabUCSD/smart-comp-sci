@@ -4,35 +4,63 @@ from pathlib import Path
 import pandas as pd
 import json
 from typing import NamedTuple, Any
-from itertools import cycle
 import numpy as np
 import matplotlib.pyplot as plt
 
 import mech_parser_args
+from mechanotransduction_ode import mechanotransduction_ode_calc
+
+var_names_all = ["Cofilin_P", "Fak", "mDia", "LaminA", "FActin", "RhoA_GTP", "mDia_A", "NPC_A", "GActin", "NPC",
+        "ROCK_A", "Myo", "Cofilin_NP", "LaminA_p", "YAPTAZ_nuc", "pFak", "YAPTAZ_phos", "YAPTAZ", "RhoA_GDP", "LIMK",
+        "Myo_A", "ROCK", "Positionboolean", "LIMK_A", "MRTF", "MRTF_nuc"]
+ode_fac_idx = var_names_all.index("FActin")
+ode_yap_idx = var_names_all.index("YAPTAZ_nuc")
 
 
 class Data(NamedTuple):
-    timings: pd.DataFrame
+    timings_: dict[str, Any]
     config: dict[str, Any]
     t: np.ndarray
     yap: np.ndarray
     fac: np.ndarray
-
-    @property
-    def enforce_mass_conservation(self) -> bool:
-        return self.config.get("flags", {}).get("enforce_mass_conservation", False)
     
     @property
-    def num_refinements(self) -> int:
-        return int(Path(self.config["mesh_file"]).name.split("_")[-1])
+    def refinement(self):
+        return int(self.config["mesh_file"].split("refined_")[-1][0])
+    
+    @property
+    def e_val(self):
+        return self.config["e_val"]
+    
+    @property
+    def z_cutoff(self):
+        return self.config["z_cutoff"]
+    
+    @property
+    def well_mixed(self):
+        return self.config.get("well_mixed", True)
     
     @property
     def dt(self) -> float:
         return self.config["solver"]["initial_dt"]
     
     @property
+    def timings(self):
+        return pd.DataFrame(self.timings_)
+    
+    @property
     def total_run_time(self) -> float:
         return self.timings[self.timings["name"] == "mechanotransduction-example"]["wall tot"].values[0]
+    
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "t": self.t.tolist(),
+            "yap": self.yap.tolist(),
+            "fac": self.fac.tolist(),
+            "config": self.config,
+            "timings_": self.timings_,
+        }
+
 
 
 def load_all_data(main_path: Path):
@@ -48,82 +76,111 @@ def load_all_data(main_path: Path):
         all_data.append(data)
     return all_data
 
-def is_default(d: Data) -> bool:
-    return np.isclose(d.dt, 0.01) and d.enforce_mass_conservation and d.num_refinements == 0
 
-def plot_data(data: list[Data], output_folder):
-    fig, ax = plt.subplots(2, 3, sharex=True, sharey="row", figsize=(12, 8))
-    fig_t, ax_t = plt.subplots(1, 3, sharey=True, figsize=(12, 4))    
-    linestyles = [cycle(["-", "--", ":", "-."]) for _ in range(3)]
+def get_ode_solution(e_val, mesh_file=""):
+    if mesh_file == "": # then use default values from R13 mesh
+        nuc_vol = 70.6
+        nm_area = 58.5
+        cyto_vol = 1925.03/4
+        pm_area = 1294.5/4
+        Ac = 133
+    else: # calculate volumes and surface areas via integration
+        import dolfin as d
+        comm = d.MPI.comm_world
+        dmesh = d.Mesh(comm)
+        hdf5 = d.HDF5File(comm, mesh_file, "r")
+        hdf5.read(dmesh, "/mesh", False)
+        dim = dmesh.topology().dim()
+        # load mesh functions that define the domains
+        mf_cell = d.MeshFunction("size_t", dmesh, dim, value=0)
+        mf_facet = d.MeshFunction("size_t", dmesh, dim-1, value=0)
+        hdf5.read(mf_cell, f"/mf{dim}")
+        hdf5.read(mf_facet, f"/mf{dim-1}")
+        hdf5.close()
+        # create mesh function for substrate
+        substrate =  d.CompiledSubDomain("near(x[2], 0.0) && on_boundary")
+        mf_substrate = d.MeshFunction("size_t", dmesh, dim-1, value=0)
+        substrate.mark(mf_substrate, 11)
+        # define integration measures and then compute vols and areas
+        dx = d.Measure("dx", dmesh, subdomain_data=mf_cell)
+        ds = d.Measure("ds", dmesh, subdomain_data=mf_facet)
+        ds_substrate = d.Measure("ds", dmesh, subdomain_data=mf_substrate)
+        nuc_vol = d.assemble(1.0*dx(2))
+        nm_area = d.assemble(1.0*ds(12))
+        cyto_vol = d.assemble(1.0*dx(1))
+        pm_area = d.assemble(1.0*ds(10))
+        Ac = d.assemble(1.0*ds_substrate(11))
 
-    # Get the default data
-    default_data = next(d for d in data if is_default(d))
+    geoParam = [cyto_vol, nuc_vol, pm_area, nm_area, Ac]
+    return mechanotransduction_ode_calc([0, 10000], e_val, geoParam)
 
-    # Plot the temporal convergence
-    temporal_convergence_data = sorted([default_data] + [di for di in data if not is_default(di) and not np.isclose(di.dt, 0.01)], key=lambda x: x.dt)
-    for d in temporal_convergence_data:
-        ax[0, 0].plot(d.t, d.yap, linestyle=next(linestyles[0]), label=f'dt={d.dt}')
-        ax[1, 0].plot(d.t, d.fac, linestyle=next(linestyles[0]), label=f'dt={d.dt}')
 
-    x = np.arange(len(temporal_convergence_data))
-    ax_t[0].bar(x, [d.total_run_time for d in temporal_convergence_data])
-    ax_t[0].set_xticks(x)
-    ax_t[0].set_xticklabels([d.dt for d in temporal_convergence_data])
-    ax_t[0].set_xlabel("dt")
-    ax_t[0].set_title("Temporal convergence")
-    ax_t[0].set_ylabel("Time [s]")
-        
-    # Plot the spatial convergence
-    spatial_convergence_data = sorted([default_data] + [di for di in data if not is_default(di) and di.num_refinements > 0], key=lambda x: x.num_refinements)
-    for d in spatial_convergence_data:
-        ax[0, 1].plot(d.t, d.yap, linestyle=next(linestyles[1]), label=f'# refinements = {d.num_refinements}')
-        ax[1, 1].plot(d.t, d.yap, linestyle=next(linestyles[1]), label=f'# refinements = {d.num_refinements}')
+def plot_data(all_data: list[Data], output_folder, format: str = "png"):
 
-    x = np.arange(len(spatial_convergence_data))
-    ax_t[1].bar(x, [d.total_run_time for d in spatial_convergence_data])
-    ax_t[1].set_xticks(x)
-    ax_t[1].set_xticklabels([d.num_refinements for d in spatial_convergence_data])
-    ax_t[1].set_xlabel("# refinements")
-    ax_t[1].set_title("Spatial convergence")
+    data = [d for d in all_data if np.isclose(d.e_val, 70000000.0) and d.well_mixed]
+    refinements = sorted(set(d.refinement for d in data))
+
+    # Eval vs Cutoff
+    x = np.arange(len(refinements))
+
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(4,6))
+    lines = []
+    labels = []
+    timings = []
+    for d in sorted(data, key=lambda x: x.refinement):
+        l, = ax[0].plot(d.t, d.yap, label=f"refinement = {d.refinement}")
+        ax[1].plot(d.t, d.fac, label=f"refinement = {d.refinement}")
+        lines.append(l)
+        labels.append(f"{d.refinement}")
+
+        timings.append(float(d.total_run_time))
+
+    # Plot ODE soltution
+    t_ode, ode_results = get_ode_solution(data[0].e_val)
+    ax[0].plot(t_ode, ode_results[:,ode_yap_idx], linestyle='dashed', label=f"ODE solution")
+    ax[1].plot(t_ode, ode_results[:,ode_fac_idx], linestyle='dashed', label=f"ODE solution")
     
+    ax[0].set_ylabel("YAP/TAZ (μM)")
+    ax[0].set_xlim([0, 3600])
+    ax[1].set_ylabel("F-Actin (μM)")
+    ax[1].set_xlabel("Time (s)")
+    ax[1].set_xlim([0, 2000])
+    lgd = fig.legend()
+    # lgd = fig.legend(lines, labels, title="Refinement", loc="center right", bbox_to_anchor=(1.1, 0.5))
+    # fig.subplots_adjust(right=0.9)
+    fig.savefig((output_folder / "results.png").with_suffix(f".{format}"), bbox_extra_artists=(lgd,), bbox_inches="tight")
+    
+    fig_t, ax_t = plt.subplots()    
+    ax_t.bar(x, timings)
+    # ax_t.set_yscale("log")
+    ax_t.set_xticks(x)
+    ax_t.set_xticklabels(refinements)
+    ax_t.set_xlabel("Refinement")
+    ax_t.set_ylabel("Total run time [s]")
+    ax_t.set_title("Total run time vs refinement")
+    fig_t.savefig((output_folder / "timings.png").with_suffix(f".{format}"))
 
-    # Plot mass conservation
-    mass_conservation_data = next(d for d in data if d.enforce_mass_conservation)
-    ax[0, 2].plot(default_data.t, default_data.yap, linestyle=next(linestyles[2]), label='no mass conservation')
-    ax[0, 2].plot(mass_conservation_data.t, mass_conservation_data.yap, linestyle=next(linestyles[2]), label='mass conservation')
-    ax[1, 2].plot(default_data.t, default_data.fac, linestyle=next(linestyles[2]), label='no mass conservation')
-    ax[1, 2].plot(mass_conservation_data.t, mass_conservation_data.fac, linestyle=next(linestyles[2]), label='mass conservation')
-    x = np.arange(2)
-    ax_t[2].bar(x, [default_data.total_run_time, mass_conservation_data.total_run_time])
-    ax_t[2].set_xticks(x)
-    ax_t[2].set_xticklabels(["No", "Yes"])
-    ax_t[2].set_xlabel("Mass conservation")
-    ax_t[2].set_title("Mass conservation")
+    fig_err_yap = plt.figure(figsize=(3,2))
+    for d in sorted(data, key=lambda x: x.refinement):
+        ode_interp = np.interp(d.t, t_ode, ode_results[:,ode_yap_idx])
+        percent_err = 100*(ode_interp-d.yap)/ode_interp
+        plt.plot(d.t, percent_err, label=f"refinement = {d.refinement}")
+    plt.xlim([0, 2000])
+    plt.xlabel("Time (s)")
+    plt.ylabel("YAP/TAZ percent error")
+    fig_err_yap.savefig((output_folder / "err_yap.png").with_suffix(f".{format}"))
 
-    for axi in ax.flatten():
-        axi.legend()
-        # axi.set_ylabel("[Ca$^{2+}$]")
-
-    for axi in ax_t:
-        axi.grid()
-        axi.set_yscale("log")
-        axi.set_ylim(1e3, 3e5)
-
-    ax[0, 0].set_ylabel("YAPTAZ_nuc")
-    ax[1, 0].set_ylabel("FActin")
-    ax[0, 0].set_title("Temporal convergence")
-    ax[0, 1].set_title("Spatial convergence (dt = 0.01)")
-    ax[0, 2].set_title("Mass conservation")
-    for i in range(2):
-        ax[1, i].set_xlabel("Time [s]")
-
-    Path(output_folder).mkdir(exist_ok=True, parents=True)
-    fig.savefig(Path(output_folder) / "mechanotransduction_yap.png")
-    fig_t.savefig(Path(output_folder) / "timings_mechanotransduction.png")
-
-
+    fig_err_fac = plt.figure(figsize=(3,2))
+    for d in sorted(data, key=lambda x: x.refinement):
+        ode_interp = np.interp(d.t, t_ode, ode_results[:,ode_fac_idx])
+        percent_err = 100*(ode_interp-d.fac)/ode_interp
+        plt.plot(d.t, percent_err, label=f"refinement = {d.refinement}")
+    plt.xlim([0, 2000])
+    plt.xlabel("Time (s)")
+    plt.ylabel("F-actin percent error")
+    fig_err_fac.savefig((output_folder / "err_fac.png").with_suffix(f".{format}"))
         
-def load_timings(folder: Path):
+def load_timings(folder: Path) -> dict[str, Any]:
     timings = (folder / "timings.txt").read_text()
 
     # # Read total run time from the start and end timestamp from the logs
@@ -144,7 +201,7 @@ def load_timings(folder: Path):
 
     # item = ["Total run time", 1] + [total_run_time] * (len(header) - 2)
     data.append(dict(zip(header, item)))
-    return pd.DataFrame(data)
+    return data
 
 
 
@@ -165,13 +222,33 @@ def load_data(folder: Path = Path("82094")) -> Data:
     config = json.loads(config_file.read_text())
     timings = load_timings(folder=folder)
 
-    return Data(timings=timings, config=config, t=t, yap=yap, fac=fac)
+    return Data(timings_=timings, config=config, t=t, yap=yap, fac=fac)
     
-def main(results_folder: Path, output_folder: Path) -> int:
-    # data = load_all_data("/global/D1/homes/henriknf/smart-comp-sci/mechanotransduction/first_run")
-    data = load_all_data(results_folder)
-    plot_data(data, output_folder)
+def main(results_folder: Path, output_folder: Path, 
+         format: str = "png",
+         skip_if_processed: bool = False,
+         use_tex: bool = False,
+    ) -> int:
     
+    plt.rcParams["text.usetex"] = use_tex
+
+    output_folder.mkdir(exist_ok=True, parents=True)
+    results_file = output_folder / "results_mechanotransduction.json"
+
+    if skip_if_processed and results_file.is_file():
+        print(f"Load results from {results_file}")
+        all_results = [Data(**r) for r in json.loads(results_file.read_text())]
+    else:
+        print(f"Gather results from {results_folder}")
+        all_results = load_all_data(results_folder)
+        print(f"Save results to {results_file.absolute()}")
+        results_file.write_text(
+            json.dumps([r.to_json() for r in all_results], indent=4)
+        )
+
+
+    plot_data(all_results, output_folder, format=format)
+    return 0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

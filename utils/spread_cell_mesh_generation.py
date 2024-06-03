@@ -8,7 +8,7 @@ import numpy as np
 import dolfin as d
 from mpi4py import MPI
 from sympy.parsing.sympy_parser import parse_expr
-from smart.mesh_tools import implicit_curve, compute_curvature, gmsh_to_dolfin
+from smart.mesh_tools import implicit_curve, compute_curvature, gmsh_to_dolfin, facet_topology
 
 def create_3dcell(
     outerExpr: str = "",
@@ -22,10 +22,10 @@ def create_3dcell(
     comm: MPI.Comm = d.MPI.comm_world,
     verbose: bool = False,
     return_curvature: bool = False,
-    nanopillars: Tuple[float, float, float] = "",
     thetaExpr: str = "",
     use_tmp: bool = False,
-    roughness: Tuple[float, float] = [0, 0]
+    dcurv: float = 0.1,
+    sym_fraction: float = 1.0,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 3d cell mesh.
@@ -67,9 +67,8 @@ def create_3dcell(
         comm: MPI communicator to create the mesh with
         verbose: If true print gmsh output, else skip
         return_curvature: If true, return curvatures as a vertex mesh function
-        nanopillars: tuple with nanopillar radius, height, spacing
         thetaExpr: String defining the theta dependence of the outer shape
-        roughness: Tuple defining roughness parameters for pm and nm
+        dcurv: curving parameter for rectangular shape
     Returns:
         Tuple (mesh, facet_marker, cell_marker)
     Or, if return_curvature = True, Returns:
@@ -79,6 +78,15 @@ def create_3dcell(
 
     if outerExpr == "":
         ValueError("Outer surface is not defined")
+
+    if sym_fraction == 0.0:
+        ValueError("Use create_2dcell for axisymmetric mesh")
+    elif not np.isclose(1.0/sym_fraction, round(1.0/sym_fraction)):
+        ValueError("sym_fraction must 1, 1/2, 1/3, 1/4, etc.")
+    elif sym_fraction != 1.0 and return_curvature:
+        print("Warning: Curvature calculations not supported for meshes"
+                      "with sym_fraction not 1.0, not returning curvature")
+        return_curvature = False
 
     rValsOuter, zValsOuter = implicit_curve(outerExpr)
     zMax = max(zValsOuter)
@@ -117,34 +125,73 @@ def create_3dcell(
             theta_crit = np.arctan2(b_rect, a_rect)
             theta_incr = 2*np.pi / (num_theta-1)
             num_per_eighth = int(np.floor((num_theta-1) / 8))
-            theta_range1 = np.linspace(0.0, theta_crit-theta_incr/4, num_per_eighth)
-            theta_range2 = np.linspace(theta_crit+theta_incr/4, 
-                                       np.pi-theta_crit-theta_incr/4, 2*num_per_eighth)
-            theta_range3 = np.linspace(np.pi-theta_crit+theta_incr/4, 
-                                       np.pi+theta_crit-theta_incr/4, 2*num_per_eighth)
-            theta_range4 = np.linspace(np.pi+theta_crit+theta_incr/4, 
-                                       2*np.pi-theta_crit-theta_incr/4, 2*num_per_eighth)
-            theta_range5 = np.linspace(2*np.pi-theta_crit+theta_incr/4, 
-                                       2*np.pi, num_per_eighth)
+            theta_range1 = np.linspace(0.0, theta_crit-theta_incr, num_per_eighth)
+            theta_range2 = np.linspace(theta_crit, 
+                                       np.pi-theta_crit-theta_incr, 2*num_per_eighth)
+            theta_range3 = np.linspace(np.pi-theta_crit, 
+                                       np.pi+theta_crit-theta_incr, 2*num_per_eighth)
+            theta_range4 = np.linspace(np.pi+theta_crit, 
+                                       2*np.pi-theta_crit-theta_incr, 2*num_per_eighth)
+            theta_range5 = np.linspace(2*np.pi-theta_crit, 
+                                       2*np.pi, num_per_eighth+1)
             thetaVec = np.concatenate([theta_range1, theta_range2, theta_range3, 
                                        theta_range4, theta_range5])
-            thetaVec[-1] = 0.0 # for exactness, replace 2*pi with 0.0
+            if sym_fraction < 1:
+                thetaVec = thetaVec[thetaVec <= 2*np.pi*sym_fraction-theta_incr]
+                thetaVec = np.concatenate([thetaVec, [2*np.pi*sym_fraction]])
+            else:
+                thetaVec[-1] = 0.0 # for exactness, replace 2*pi with 0.0
             scaleVec = []
             for j in range(len(thetaVec)):
                 if np.abs(np.tan(thetaVec[j])) <= b_rect / a_rect:
                     scaleVec.append(np.abs(a_rect / (2*np.cos(thetaVec[j]))))
                 else:
                     scaleVec.append(np.abs(b_rect / (2*np.sin(thetaVec[j]))))
+                if dcurv > 0:
+                    # smooth corners
+                    xCur = np.cos(thetaVec[j])*scaleVec[j]
+                    yCur = np.sin(thetaVec[j])*scaleVec[j]
+                    if np.abs(xCur) > (a_rect/2 - dcurv) and np.abs(yCur) > (b_rect/2 - dcurv):
+                        x1 = np.sign(xCur)*(a_rect/2 - dcurv)
+                        y1 = np.sign(yCur)*(b_rect/2 - dcurv)
+                        aPoly = dcurv**2 * (1 + np.tan(thetaVec[j])**2)
+                        bPoly = 2*dcurv*np.tan(thetaVec[j])*(x1*np.tan(thetaVec[j])-y1)
+                        cPoly = np.tan(thetaVec[j])*(-2*x1*y1+x1**2*np.tan(thetaVec[j]))+y1**2-dcurv**2
+                        root1 = (-bPoly + np.sqrt(bPoly**2 - 4*aPoly*cPoly))/(2*aPoly)
+                        root2 = (-bPoly - np.sqrt(bPoly**2 - 4*aPoly*cPoly))/(2*aPoly)
+                        if x1 > 0:
+                            rootVal = root1
+                        else:
+                            rootVal = root2
+                        if np.abs(rootVal) <= 1:
+                            cosCur = rootVal
+                            thetaCircle = np.sign(yCur)*np.arccos(cosCur)
+                            xCircle = x1 + dcurv*np.cos(thetaCircle)
+                            yCircle = y1 + dcurv*np.sin(thetaCircle)
+                            scaleVec[j] *= np.sqrt(xCircle**2+yCircle**2)/np.sqrt(xCur**2 + yCur**2)
+                        else:
+                            raise ValueError(f"Unable to smooth corners for {thetaExpr}")
+            # define test values for smoothing below
+            xVals = rValsOuter[-1]*np.multiply(np.array(scaleVec), np.cos(np.array(thetaVec)))
+            yVals = rValsOuter[-1]*np.multiply(np.array(scaleVec), np.sin(np.array(thetaVec)))
+            
         else:
-            thetaVec = np.linspace(0.0, 2*np.pi, num_theta)
-            thetaVec[-1] = 0.0 # for exactness, replace 2*pi with 0.0
+            thetaVec = np.linspace(0.0, 2*np.pi*sym_fraction, round((num_theta-1)*sym_fraction)+1)
+            if sym_fraction == 1:
+                thetaVec[-1] = 0.0 # for exactness, replace 2*pi with 0.0
             thetaExprSym = parse_expr(thetaExpr)
             scaleVec = []
             for j in range(len(thetaVec)):
                 scaleVec.append(float(thetaExprSym.subs({"theta": thetaVec[j]})))
+            # define test values for smoothing below
+            thetaTest = np.linspace(0.0, 2*np.pi, num_theta)
+            scaleVecTest = []
+            for j in range(len(thetaTest)):
+                scaleVecTest.append(float(thetaExprSym.subs({"theta": thetaTest[j]})))
+            xVals = rValsOuter[-1]*np.multiply(np.array(scaleVecTest), np.cos(np.array(thetaTest)))
+            yVals = rValsOuter[-1]*np.multiply(np.array(scaleVecTest), np.sin(np.array(thetaTest)))
+        dtheta = min(2*np.pi/(num_theta-1), hEdge/max(xVals), hEdge/max(yVals))
         # define a smooth shape (ellipsoid) to average out sharp edges
-        xVals = np.multiply(np.array(scaleVec), np.cos(np.array(thetaVec)))
-        yVals = np.multiply(np.array(scaleVec), np.sin(np.array(thetaVec)))
         AR = (np.max(xVals) - np.min(xVals)) / (np.max(yVals) - np.min(yVals))
         a = np.sqrt(AR)
         b = 1/np.sqrt(AR)
@@ -155,6 +202,7 @@ def create_3dcell(
             scaleVecSmooth.append(float(thetaExprSmooth.subs({"theta": thetaVec[j]})))
     else:
         thetaVec = [0]
+        dtheta = hEdge/max(rValsOuter)
     cell_plane_tag = []
     bottom_point_list = []
     outer_spline_list = []
@@ -164,10 +212,8 @@ def create_3dcell(
     all_points_list = [top_point]
     if thetaExpr != "":
         # define theta dependence
-        rand_rough = np.random.rand(20,20)
-        rand_rough_neg = np.random.rand(20,20)
         for j in range(len(thetaVec)):
-            if j == (len(thetaVec)-1):
+            if j == (len(thetaVec)-1) and sym_fraction == 1:
                 outer_spline_list.append(outer_spline_list[0])
                 bottom_point_list.append(bottom_point_list[0])
             else:
@@ -178,42 +224,13 @@ def create_3dcell(
                     else:
                         # average out sharp edges (cell becomes more and more ellipsoidal
                         # away from the substrate)
-                        xValRef = rValsOuter[i]*scaleVec[j]*np.cos(thetaVec[j])
-                        yValRef = rValsOuter[i]*scaleVec[j]*np.sin(thetaVec[j])
-                        xValSmooth = rValsOuter[i]*scaleVecSmooth[j]*np.cos(thetaVec[j])
-                        yValSmooth =rValsOuter[i]*scaleVecSmooth[j]*np.sin(thetaVec[j])
                         zScale1 = (zMax - zValsOuter[i])/zMax
                         zScale2 = zValsOuter[i]/zMax
-                        xCur, yCur, zCur = (zScale1*xValRef + zScale2*xValSmooth, 
-                                            zScale1*yValRef + zScale2*yValSmooth, 
-                                            zValsOuter[i])
-                        if roughness[0] > 0:
-                            # define deformation field over surface from smooth function
-                            max_wavelength = 5.0
-                            zDev = 0
-                            for m in range(20):
-                                for n in range(20):
-                                    xArg = 2*np.pi*xCur*(m+1)/max_wavelength
-                                    yArg = 2*np.pi*yCur*(n+1)/max_wavelength
-                                    u1 = 1#rand_rough[m,n]
-                                    u2 = np.sqrt(1 - u1**2)
-                                    curMag = 2*roughness[0] / ((m+1)**2 + (n+1)**2) 
-                                    zDev = zDev + curMag * (u1 * (np.cos(xArg)*np.cos(yArg) + np.sin(xArg)*np.sin(yArg)) +
-                                                            u2 * (np.sin(xArg)*np.cos(yArg) + np.cos(xArg)*np.sin(yArg)))
-                                    xArg_neg = 2*np.pi*xCur*(-m-1)/max_wavelength
-                                    yArg_neg = 2*np.pi*yCur*(-n-1)/max_wavelength
-                                    u1_neg = 1#rand_rough_neg[m,n]
-                                    u2_neg = np.sqrt(1 - u1**2)
-                                    zDev = zDev + curMag * (u1_neg * (np.cos(xArg_neg)*np.cos(yArg_neg) + np.sin(xArg_neg)*np.sin(yArg_neg)) +
-                                                            u2_neg * (np.sin(xArg_neg)*np.cos(yArg_neg) + np.cos(xArg_neg)*np.sin(yArg_neg)))
-                            # dev_vec = roughness[0] * np.random.randn(1)
-                            # xCur = xCur + dev_vec[0]
-                            # yCur = yCur + dev_vec[1]
-                            if i == len(rValsOuter)-1:
-                                zCur = 0
-                            else:
-                                zCur = max(zCur + zDev, 0) # z cannot be less than zero
-                        
+                        scaleCur = np.sqrt(zScale1*scaleVec[j]**2 + zScale2*scaleVecSmooth[j]**2)
+                        # scaleCur = zScale1*scaleVec[j] + zScale2*scaleVecSmooth[j]
+                        xCur = scaleCur*rValsOuter[i]*np.cos(thetaVec[j])
+                        yCur = scaleCur*rValsOuter[i]*np.sin(thetaVec[j])
+                        zCur = zValsOuter[i]
                         cur_tag = gmsh.model.occ.add_point(xCur, yCur, zCur)
                         outer_tag_list.append(cur_tag)
                         all_points_list.append(cur_tag)
@@ -225,12 +242,27 @@ def create_3dcell(
                     [outer_spline_list[j], outer_spline_list[j-1], edge_tag])
                 edge_surf_list.append(gmsh.model.occ.add_bspline_filling(edge_loop_tag, type="Curved"))
                 edge_segments.append(edge_tag)
-        # now define total outer shape from edge_segments and edge_surf_list    
-        bottom_loop = gmsh.model.occ.add_curve_loop(edge_segments)
-        bottom_surf = gmsh.model.occ.add_plane_surface([bottom_loop])
-        cur_surf_loop = gmsh.model.occ.add_surface_loop([bottom_surf, *edge_surf_list])
-        outer_shape = gmsh.model.occ.add_volume([cur_surf_loop])
-        outer_shape = [(3, outer_shape)]
+        if sym_fraction < 1:
+            origin_tag = gmsh.model.occ.add_point(0, 0, 0)
+            bottom_line1 = gmsh.model.occ.add_line(origin_tag, bottom_point_list[0])
+            bottom_line2 = gmsh.model.occ.add_line(origin_tag, bottom_point_list[-1])
+            bottom_loop = gmsh.model.occ.add_curve_loop([bottom_line1, bottom_line2, *edge_segments])
+            bottom_surf = gmsh.model.occ.add_plane_surface([bottom_loop])
+            origin_line = gmsh.model.occ.add_line(origin_tag, top_point)
+            front_loop = gmsh.model.occ.add_curve_loop([origin_line, outer_spline_list[0], bottom_line1])
+            front_surf = gmsh.model.occ.add_plane_surface([front_loop])
+            back_loop = gmsh.model.occ.add_curve_loop([origin_line, outer_spline_list[-1], bottom_line2])
+            back_surf = gmsh.model.occ.add_plane_surface([back_loop])
+            cur_surf_loop = gmsh.model.occ.add_surface_loop([bottom_surf, front_surf, back_surf, *edge_surf_list])
+            outer_shape = gmsh.model.occ.add_volume([cur_surf_loop])
+            outer_shape = [(3, outer_shape)]
+        else:
+            # now define total outer shape from edge_segments and edge_surf_list    
+            bottom_loop = gmsh.model.occ.add_curve_loop(edge_segments)
+            bottom_surf = gmsh.model.occ.add_plane_surface([bottom_loop])
+            cur_surf_loop = gmsh.model.occ.add_surface_loop([bottom_surf, *edge_surf_list])
+            outer_shape = gmsh.model.occ.add_volume([cur_surf_loop])
+            outer_shape = [(3, outer_shape)]
     else:
         # rotate shape 2*pi in the case of no theta dependence
         outer_tag_list = []
@@ -248,32 +280,7 @@ def create_3dcell(
             [outer_spline, symm_axis_tag, bottom_tag]
         )
         cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
-        outer_shape = gmsh.model.occ.revolve([(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi)
-    
-    if nanopillars != "":
-        nanopillar_rad = nanopillars[0]
-        nanopillar_height = nanopillars[1]
-        nanopillar_spacing = nanopillars[2]
-        zero_idx = np.nonzero(zValsOuter <= 0.0)
-        num_pillars = 2*np.floor(rValsOuter[zero_idx]/nanopillar_spacing) + 1
-        rMax = nanopillar_spacing * np.floor(rValsOuter[zero_idx]/nanopillar_spacing)
-        test_coords = np.linspace(-rMax[0], rMax[0], int(num_pillars[0]))
-        xTest, yTest = np.meshgrid(test_coords, test_coords)
-        rTest = np.sqrt(xTest**2 + yTest**2)
-        keep_logic = rTest <= rValsOuter[zero_idx]-nanopillar_rad-0.1
-        xTest, yTest = xTest[keep_logic], yTest[keep_logic]
-        for i in range(len(xTest)):
-            cyl_tag = gmsh.model.occ.add_cylinder(
-                xTest[i], yTest[i], 0.0, 0, 0, nanopillar_height-nanopillar_rad, nanopillar_rad)
-            cap_tag = gmsh.model.occ.add_sphere(
-                xTest[i], yTest[i], nanopillar_height-nanopillar_rad, nanopillar_rad)
-            cur_pillar = gmsh.model.occ.fuse([(3,cyl_tag)], [(3,cap_tag)])
-            (outer_shape, outer_shape_map) = gmsh.model.occ.cut(outer_shape, cur_pillar[0])
-            outer_shape_list = []
-            for j in range(len(outer_shape_map)):
-                if outer_shape_map[j]!=[]:
-                    outer_shape_list.append(outer_shape_map[j][0])
-            outer_shape = outer_shape_list
+        outer_shape = gmsh.model.occ.revolve([(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi*sym_fraction)
 
     outer_shape_tags = []
     for i in range(len(outer_shape)):
@@ -281,7 +288,6 @@ def create_3dcell(
             outer_shape_tags.append(outer_shape[i][1])
     assert len(outer_shape_tags) == 1  # should be just one 3D body from the full revolution
 
-    # need to fix labeling of facets!
     if innerExpr == "":
         # No inner shape in this case
         gmsh.model.occ.synchronize()
@@ -305,7 +311,8 @@ def create_3dcell(
         symm_inner_tag = gmsh.model.occ.add_line(inner_tag_list[0], inner_tag_list[-1])
         inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_spline_tag, symm_inner_tag])
         inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
-        inner_shape = gmsh.model.occ.revolve([(2, inner_plane_tag)], 0, 0, 0, 0, 0, 1, 2 * np.pi)
+        inner_shape = gmsh.model.occ.revolve([(2, inner_plane_tag)], 
+                                             0, 0, 0, 0, 0, 1, 2 * np.pi * sym_fraction)
         inner_shape_tags = []
         for i in range(len(inner_shape)):
             if inner_shape[i][0] == 3:  # pull out tags associated with 3d objects
@@ -400,6 +407,25 @@ def create_3dcell(
     # remove tmp mesh and tmp folder
     gmsh_file.unlink(missing_ok=False)
     tmp_folder.rmdir()
+    # fix mf2 labels in certain cases
+    for f in d.facets(dmesh):
+        topology, cellIndices = facet_topology(f, mf3)
+        if topology == "boundary":
+            mf2.set_value(f.index(), outer_marker)
+        elif topology == "interface":
+            mf2.set_value(f.index(), interface_marker)
+        else:
+            mf2.set_value(f.index(), 0)
+
+    # if applicable, exclude no flux surfaces from boundary
+    if sym_fraction < 1:
+        for f in d.facets(dmesh):
+            # calculate current angle theta
+            theta_cur = np.arctan2(f.midpoint().y(), f.midpoint().x())
+            if (np.abs(theta_cur-2*np.pi*sym_fraction) < dtheta/10 or 
+                np.abs(theta_cur) < dtheta/10):
+                mf2.set_value(f.index(), 0)
+
     # return dolfin mesh, mf2 (2d tags) and mf3 (3d tags)
     if return_curvature:
         if innerExpr == "":

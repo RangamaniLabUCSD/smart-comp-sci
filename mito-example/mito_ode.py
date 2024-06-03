@@ -137,7 +137,11 @@ def mito_ode_calc(timeSpan, geoParam, ant_rate):
     no1_atp = 267 #number of atphase
     # initial conditions
     # order: D_matrix, T_matrix, T_cyto, T_IMS, L, DL, LD, LT, TL, TLD, DLD, DLDp, TLT, TLTp, E_IMS, E_Mat, E_Mat_H3Star, E_Mat_H3S, E_Mat_H3, D_IMS
-    yinit  = [nr_dm_m, nr_tm_m, nr_to_c, nr_to_i, no_ant, 0, 0, 0, 0, 0, 0, 0, 0, 0, no1_atp, 0, 0, 0, 0, nr_do_i]
+    ant_frac = 1.0
+    rem = (1-ant_frac)/10
+    yinit  = [nr_dm_m, nr_tm_m, nr_to_c, nr_to_i, ant_frac*no_ant, 
+              rem*no_ant, rem*no_ant, rem*no_ant, rem*no_ant, rem*no_ant, rem*no_ant, 
+              rem*no_ant, rem*no_ant, rem*no_ant, no1_atp, 0, 0, 0, 0, nr_do_i]
 
     t = np.linspace(timeSpan[0], timeSpan[1], 1000)
     sol = odeint(f, yinit, t, args=(vmito,vims,vcube,ant_rate))

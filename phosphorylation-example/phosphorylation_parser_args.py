@@ -6,7 +6,7 @@ def add_phosphorylation_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--mesh-folder",
         type=Path,
-        default=Path.cwd().parent / "meshes-phosphorylation" / "DemoSphere.h5",
+        default=Path.cwd().parent / "meshes-phosphorylation",
     )
     parser.add_argument(
         "-o", "--outdir", type=Path, default=Path("results_phosphorylation")
@@ -33,6 +33,26 @@ def add_phosphorylation_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--rect",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--write-checkpoint",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--comparison-results-folder",
+        type=Path,
+        default="",
+    )
+    parser.add_argument(
+        "--comparison-mesh-folder",
+        type=Path,
+        default="",
+    )
 
 
 def add_phosphorylation_preprocess_arguments(
@@ -48,6 +68,11 @@ def add_phosphorylation_preprocess_arguments(
     parser.add_argument("--num-refinements", type=int, default=0)
     parser.add_argument(
         "--axisymmetric",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--rect",
         action="store_true",
         default=False,
     )

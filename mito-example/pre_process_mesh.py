@@ -15,6 +15,7 @@ def main(input_mesh_file, output_mesh_file, input_curv_file,
     mito_mesh = d.Mesh(Path(input_mesh_file).as_posix())
     cell_markers = d.MeshFunction("size_t", mito_mesh, 3, mito_mesh.domains())
     facet_markers = d.MeshFunction("size_t", mito_mesh, 2, mito_mesh.domains())
+    cristae_mf = d.MeshFunction("size_t", mito_mesh, 2, mito_mesh.domains())
 
     if single_compartment_im:
         facet_markers.array()[np.where(facet_markers.array()==11)[0]] = 12
@@ -38,7 +39,8 @@ def main(input_mesh_file, output_mesh_file, input_curv_file,
     #     )
 
     Path(output_mesh_file).parent.mkdir(exist_ok=True, parents=True)
-    mesh_tools.write_mesh(mito_mesh, facet_markers, cell_markers, output_mesh_file)
+    mesh_tools.write_mesh(mito_mesh, facet_markers, cell_markers, 
+                          output_mesh_file, subdomains=[cristae_mf])
     curvature = d.MeshFunction("double", mito_mesh, str(input_curv_file))
     curvature.array()[np.where(curvature.array() > 1e9)[0]] = 0
     with d.XDMFFile(str(output_curv_file)) as curv_file:

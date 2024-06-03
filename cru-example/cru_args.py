@@ -25,9 +25,9 @@ def add_run_cru_arguments(parser: argparse.ArgumentParser) -> None:
         default=True,
     )
     parser.add_argument(
-        "--serca",
+        "--no-serca",
         action='store_true',
-        default=True,
+        default=False,
     )
 
 

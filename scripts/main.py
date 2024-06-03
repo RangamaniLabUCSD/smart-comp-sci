@@ -20,6 +20,18 @@ commands = {
         msg="Run dendritic spine example",
         script=runner.dendritic_spine_example
     ),
+    "dendritic-spine-postprocess": Command(
+        msg="Postprocess dendritic spine example",
+        script=runner.dendritic_spine_postprocess
+    ),
+    "cru-preprocess": Command(
+        msg="Run preprocess cru mesh",
+        script=runner.preprocess_cru_mesh
+    ),
+    "cru": Command(
+        msg="Run cru example",
+        script=runner.cru_example
+    ),
     "mechanotransduction-preprocess": Command(
         msg="Run preprocess mechanotransduction mesh",
         script=runner.pre_preprocess_mech_mesh
