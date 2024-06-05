@@ -20,9 +20,6 @@ docker run -ti -v $(pwd):/root/shared -w /root/shared -p 8888:8888 --name smart-
 
 This should preferably be started from the root of this git repo, as `-v` shared the current directory on your computer with the docker container.
 
-> [!NOTE]
-> This uses a Docker image build for AMD (not ARM), which means that users of ARM processors. We are aiming to fix this.
-
 This will launch a terminal with [FEniCS](https://bitbucket.org/fenics-project/dolfin/src/master/) installed.
 To install the compatible version of SMART, call
 
