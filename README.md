@@ -12,10 +12,10 @@ See more info about running the code and reproducing the results in the [scripts
 ## Installation
 
 To run the scripts, we advice usage of docker, and the following base image
-`ghcr.io/scientificcomputing/fenics-gmsh:2024-02-19`, which after installation of docker, can be started with
+`ghcr.io/scientificcomputing/fenics-gmsh:2024-05-30`, which after installation of docker, can be started with
 
 ```bash
-docker run -ti -v $(pwd):/root/shared -w /root/shared -p 8888:8888 --name smart-comp-sci ghcr.io/scientificcomputing/fenics-gmsh:2024-05-13@sha256:e067aeefedc074230a4155e1aa0b0d0c8e3049ee982e43e580fefc2f39fe8175
+docker run -ti -v $(pwd):/root/shared -w /root/shared -p 8888:8888 --name smart-comp-sci  ghcr.io/scientificcomputing/fenics-gmsh:2024-05-30
 ```
 
 This should preferably be started from the root of this git repo, as `-v` shared the current directory on your computer with the docker container.
