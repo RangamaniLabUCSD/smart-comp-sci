@@ -28,12 +28,17 @@ To install the compatible version of SMART, call
 ```bash
 python3 -m pip install fenics-smart[lab]==2.2.2 -U
 ```
+Alternatively, you can use the provided docker image from smart directly, i.e
+```bash
+docker run -ti -v $(pwd):/root/shared -w /root/shared -p 8888:8888 --name smart-comp-sci  ghcr.io/rangamanilabucsd/smart-lab:v2.2.2
+```
 
 To run notebooks in your browser, call
 
 ```bash
 jupyter lab --ip 0.0.0.0 --no-browser --allow-root
 ```
+
 
 All meshes can be downloaded from the ["SMART Demo Meshes" Zenodo dataset](https://zenodo.org/records/10480304).
 To run any of the Jupyter notebook versions of the examples, these meshes should be present in the main folder of the local repository within a folder entitled `meshes`.
