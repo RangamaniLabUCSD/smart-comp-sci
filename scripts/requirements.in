@@ -1,4 +1,4 @@
-fenics-smart
+fenics-smart==2.2.2
 matplotlib
 jupytext
 sympy==1.4  # Pin version to whatever is installed on the cluster
