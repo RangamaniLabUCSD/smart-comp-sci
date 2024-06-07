@@ -18,7 +18,7 @@ dataclasses==0.6
     # via fenics-smart
 fastjsonschema==2.18.1
     # via nbformat
-fenics-smart==2.1.7
+fenics-smart==2.2.2
     # via -r requirements.in
 fonttools==4.43.1
     # via matplotlib

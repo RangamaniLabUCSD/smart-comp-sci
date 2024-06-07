@@ -342,33 +342,39 @@ def plot_timings_stacked(all_data: list[Data], output_folder, format: str = "png
 
     timings_refined0 = [d.timings for d in data_refined0]
     timings_refined0_concat = pd.concat(tuple(timings_refined0))
-    timings_refined0_mean = timings_refined0_concat.groupby("name").mean()
-    timings_refined0_std = timings_refined0_concat.groupby("name").std()
+    timings_refined0_group = timings_refined0_concat.groupby("name")
+    timings_refined0_mean = timings_refined0_group.mean()
+    timings_refined0_std = timings_refined0_group.std()
 
     petsc_timings_refined0 = [d.petsc_timings for d in data_refined0]
     petsc_timings_refined0_concat = pd.concat(tuple(petsc_timings_refined0))
-    petsc_timings_refined0_mean = petsc_timings_refined0_concat.groupby("name").mean()
-    petsc_timings_refined0_std = petsc_timings_refined0_concat.groupby("name").std()
+    petsc_timings_refined0_group = petsc_timings_refined0_concat.groupby("name")
+    petsc_timings_refined0_mean = petsc_timings_refined0_group.mean()
+    petsc_timings_refined0_std = petsc_timings_refined0_group.std()
 
     timings_refined1 = [d.timings for d in data_refined1]
     timings_refined1_concat = pd.concat(tuple(timings_refined1))
-    timings_refined1_mean = timings_refined1_concat.groupby("name").mean()
-    timings_refined1_std = timings_refined1_concat.groupby("name").std()
+    timings_refined1_group = timings_refined1_concat.groupby("name")
+    timings_refined1_mean = timings_refined1_group.mean()
+    timings_refined1_std = timings_refined1_group.std()
 
     petsc_timings_refined1 = [d.petsc_timings for d in data_refined1]
     petsc_timings_refined1_concat = pd.concat(tuple(petsc_timings_refined1))
-    petsc_timings_refined1_mean = petsc_timings_refined1_concat.groupby("name").mean()
-    petsc_timings_refined1_std = petsc_timings_refined1_concat.groupby("name").std()
+    petsc_timings_refined1_group = petsc_timings_refined1_concat.groupby("name")
+    petsc_timings_refined1_mean = petsc_timings_refined1_group.mean()
+    petsc_timings_refined1_std = petsc_timings_refined1_group.std()
 
     timings_refined2 = [d.timings for d in data_refined2]
     timings_refined2_concat = pd.concat(tuple(timings_refined2))
-    timings_refined2_mean = timings_refined2_concat.groupby("name").mean()
-    timings_refined2_std = timings_refined2_concat.groupby("name").std()
+    timings_refined2_group = timings_refined2_concat.groupby("name")
+    timings_refined2_mean = timings_refined2_group.mean()
+    timings_refined2_std = timings_refined2_group.std()
 
     petsc_timings_refined2 = [d.petsc_timings for d in data_refined2]
     petsc_timings_refined2_concat = pd.concat(tuple(petsc_timings_refined2))
-    petsc_timings_refined2_mean = petsc_timings_refined2_concat.groupby("name").mean()
-    petsc_timings_refined2_std = petsc_timings_refined2_concat.groupby("name").std()
+    petsc_timings_refined2_group = petsc_timings_refined2_concat.groupby("name")
+    petsc_timings_refined2_mean = petsc_timings_refined2_group.mean()
+    petsc_timings_refined2_std = petsc_timings_refined2_group.std()
 
     petsc_names = list(petsc_timings_refined0_mean.index)
     # names = list(timings_refined0_mean.index)
@@ -398,11 +404,31 @@ def plot_timings_stacked(all_data: list[Data], output_folder, format: str = "png
         timings_refined1_mean["wall tot"].values[total_index],
         timings_refined2_mean["wall tot"].values[total_index],
     ]
+    tot_name = "dendritic-spine-example [main]"
+    all_total_times = [np.unique(timings_refined0_group.get_group(tot_name)["wall tot"].values), 
+                       np.unique(timings_refined1_group.get_group(tot_name)["wall tot"].values), 
+                       np.unique(timings_refined2_group.get_group(tot_name)["wall tot"].values)]
     total_time_std = [
         timings_refined0_std["wall tot"].values[total_index],
         timings_refined1_std["wall tot"].values[total_index],
         timings_refined2_std["wall tot"].values[total_index],
     ]
+    total_time_mean = [
+        petsc_timings_refined0_mean["time"]["summary"],
+        petsc_timings_refined1_mean["time"]["summary"],
+        petsc_timings_refined2_mean["time"]["summary"]
+    ]
+    all_total_times = [
+        petsc_timings_refined0_group.get_group("summary").time.values, 
+        petsc_timings_refined1_group.get_group("summary").time.values, 
+        petsc_timings_refined2_group.get_group("summary").time.values
+    ]
+    total_time_std = [
+        petsc_timings_refined0_std["time"]["summary"],
+        petsc_timings_refined1_std["time"]["summary"],
+        petsc_timings_refined2_std["time"]["summary"],
+    ]
+    
 
     assemble_time = [
         petsc_timings_refined0_mean["time"].values[indices[1]]
@@ -412,37 +438,76 @@ def plot_timings_stacked(all_data: list[Data], output_folder, format: str = "png
         petsc_timings_refined2_mean["time"].values[indices[1]]
         + petsc_timings_refined2_mean["time"].values[indices[2]],
     ]
+    assemble_time_std = [
+        np.sqrt(petsc_timings_refined0_std["time"].values[indices[1]]**2
+        + petsc_timings_refined0_std["time"].values[indices[2]]**2),
+        np.sqrt(petsc_timings_refined1_std["time"].values[indices[1]]**2
+        + petsc_timings_refined1_std["time"].values[indices[2]]**2),
+        np.sqrt(petsc_timings_refined2_std["time"].values[indices[1]]**2
+        + petsc_timings_refined2_std["time"].values[indices[2]]**2),
+    ]
+    all_assemble_times =[
+        petsc_timings_refined0_group.get_group(petsc_names[indices[1]]).time.values +
+        petsc_timings_refined0_group.get_group(petsc_names[indices[2]]).time.values,
+        petsc_timings_refined1_group.get_group(petsc_names[indices[1]]).time.values +
+        petsc_timings_refined1_group.get_group(petsc_names[indices[2]]).time.values,        
+        petsc_timings_refined2_group.get_group(petsc_names[indices[1]]).time.values +
+        petsc_timings_refined2_group.get_group(petsc_names[indices[2]]).time.values,
+    ]
 
     ksp_time = [
         petsc_timings_refined0_mean["time"].values[indices[0]],
         petsc_timings_refined1_mean["time"].values[indices[0]],
         petsc_timings_refined2_mean["time"].values[indices[0]],
     ]
+    ksp_time_std = [
+        petsc_timings_refined0_std["time"].values[indices[0]],
+        petsc_timings_refined1_std["time"].values[indices[0]],
+        petsc_timings_refined2_std["time"].values[indices[0]],
+    ]
+    all_ksp_times =[
+        petsc_timings_refined0_group.get_group(petsc_names[indices[0]]).time.values,
+        petsc_timings_refined1_group.get_group(petsc_names[indices[0]]).time.values,        
+        petsc_timings_refined2_group.get_group(petsc_names[indices[0]]).time.values,
+    ]
+
     rest_time = [
         total_time_mean[0] - assemble_time[0] - ksp_time[0],
         total_time_mean[1] - assemble_time[1] - ksp_time[1],
         total_time_mean[2] - assemble_time[2] - ksp_time[2],
     ]
+    rest_time_std = [
+        np.sqrt(total_time_std[0]**2 - assemble_time_std[0]**2 - ksp_time_std[0]**2),
+        np.sqrt(total_time_std[1]**2 - assemble_time_std[1]**2 - ksp_time_std[1]**2),
+        np.sqrt(total_time_std[2]**2 - assemble_time_std[2]**2 - ksp_time_std[2]**2),
+    ]
+    all_rest_times =[
+        all_total_times[0] - all_assemble_times[0] - all_ksp_times[0],
+        all_total_times[1] - all_assemble_times[1] - all_ksp_times[1],
+        all_total_times[2] - all_assemble_times[2] - all_ksp_times[2],
+    ]
+    all_timing_points = [all_assemble_times, all_ksp_times, all_rest_times]
 
     lines = []
     labels = []
     bottom = np.zeros(len(x))
     # y = np.zeros_like(x)
-    for i, (label, yi) in enumerate(
+    for i, (label, yi, yerr) in enumerate(
         [
-            ("Assemble", assemble_time),
-            ("KSP solve", ksp_time),
-            ("Other", rest_time),
+            ("Assemble", assemble_time, assemble_time_std),
+            ("KSP solve", ksp_time, ksp_time_std),
+            ("Other", rest_time, rest_time_std),
         ]
     ):
         y = np.divide(yi, total_time_mean)
-        yerr = np.divide(
-            np.sqrt(
-                np.square(np.divide(yi, total_time_mean)) * np.square(total_time_std)
-                + np.square(y) * np.square(np.divide(total_time_std, total_time_mean))
-            ),
-            total_time_mean,
-        )
+        # yerr = np.divide(
+        #     np.sqrt(
+        #         np.square(np.divide(yi, total_time_mean)) * np.square(total_time_std)
+        #         + np.square(y) * np.square(np.divide(total_time_std, total_time_mean))
+        #     ),
+        #     total_time_mean,
+        # )
+        yerr = np.divide(yerr, total_time_mean)
         l = ax.bar(
             x,
             y,
@@ -452,6 +517,13 @@ def plot_timings_stacked(all_data: list[Data], output_folder, format: str = "png
             color=colors[i],
             bottom=bottom,
         )
+        for j in range(len(x)):
+            x_cur = np.linspace(x[j]-0.08, x[j]+0.08, len(all_timing_points[i][j]))
+            sum_timings = all_timing_points[0][j]
+            for k in range(1,i+1):
+                sum_timings = sum_timings + all_timing_points[k][j]
+            ax.plot(x_cur, np.divide(sum_timings, all_total_times[j]),
+                    "o", markersize=4, color=colors[i], markeredgecolor="k")
         lines.append(l)
         labels.append(label)
         bottom += y
@@ -657,9 +729,15 @@ def plot_timings(all_data: list[Data], output_folder, format: str = "png"):
         total_time_mean,
         yerr=total_time_std,
         linewidth=2,
-        fmt="o-",
+        fmt="-",
         label="Total run time",
     )
+    ax.plot(num_dofs[0], timings_refined0_mean["wall tot"].values[total_index],
+            "o", color="b", markersize=4)
+    ax.plot(num_dofs[1], timings_refined1_mean["wall tot"].values[total_index],
+            "o", color="b", markersize=4)
+    ax.plot(num_dofs[2], timings_refined2_mean["wall tot"].values[total_index],
+            "o", color="b", markersize=4)
     ax.plot(
         num_dofs,
         5e-4 * x * np.log(x),

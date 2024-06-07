@@ -1,0 +1,20 @@
+name: Test commands
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-commands:
+    runs-on: ubuntu-22.04
+    container: ghcr.io/rangamanilabucsd/smart-lab:v2.2.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Install code"
+        run: python3 -m pip install pytest jupytext
+
+      - name: Run smoke tests
+        run: |
+          python3 -m pytest scripts/test_scripts.py -v
