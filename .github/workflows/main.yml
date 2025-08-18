@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-22.04
     container: ghcr.io/rangamanilabucsd/smart-lab:v2.2.2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: "Install code"
         run: python3 -m pip install pytest jupytext
